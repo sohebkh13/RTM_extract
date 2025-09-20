@@ -1,0 +1,211 @@
+
+# AI Agent Development Specification: Excel RFP to RTM with Chunking & Groq API
+
+## Project Overview
+Build an AI agent that processes complex Excel RFP documents (with multiple sheets, merged cells, vendor responses) and generates a comprehensive Requirements Traceability Matrix (RTM) using AI-powered analysis while respecting Groq API rate limits through intelligent chunking.
+
+## Technical Requirements
+
+### 1. Input Processing
+- Load Excel file
+- Handle multiple sheets
+- Parse merged cells properly to extract complete requirement descriptions
+- Extract vendor responses from comment columns
+- Maintain cell references for traceability (sheet name + cell location)
+
+### 2. Chunking Strategy (Critical for Token Limits)
+
+#### Token Limits to Respect:
+- Groq API: Maximum 3,000 tokens per request (stay under context window)
+- Daily limits: 14,400 requests, 500,000 tokens
+- Rate limit: 30 requests per minute (need 3-second delays between requests)
+
+#### Chunking Method:
+1. **Primary Chunking**: By Excel sheet first
+   - Process "Introduction" as single chunk (small sheet)
+   - Process "1- General Req." by logical sections
+   - Process "2- tool Requirements" (largest sheet) by subcategories:
+     * Device Management Center (rows with DMC requirements)
+     * SIM Manager (rows with SIM requirements) 
+     * CPE/ACS Management (rows with CPE requirements)
+   - Process remaining sheets by logical sections
+
+2. **Secondary Chunking**: Within large sections by row groups
+   - Group 10-20 rows per chunk depending on text density
+   - Never split individual requirements across chunks
+   - Preserve merged cell content integrity
+   - Include row metadata for traceability
+
+3. **Token Estimation**: 
+   - Estimate ~4 characters per token
+   - Target 2,800-3,000 tokens per chunk (leaving buffer for prompt)
+   - Add 100-200 token overlap between chunks for context continuity
+
+### 3. AI Processing Workflow
+
+#### For Each Chunk:
+1. **Prepare Context**: Include sheet name, row range, and preceding context
+2. **Send to Groq API** with structured prompt for requirement extraction
+3. **Wait 3 seconds** between API calls to respect rate limits
+4. **Parse Response**: Extract structured requirement data
+5. **Store Results**: Maintain chunk order and metadata
+
+#### Prompt Template Structure:
+```
+You are an expert requirements analyst. Analyze the following Excel content and extract requirements in this exact JSON format:
+
+{
+  "requirements": [
+    {
+      "requirement_id": "REQ-XXX",
+      "description": "exact requirement text from Excel",
+      "source": "sheet_name!cell_reference", 
+      "requirement_type": "Functional|Non-functional|Business|Technical|User",
+      "priority": "High|Medium|Low",
+      "related_deliverables": "relevant system components",
+      "test_case_id": "TC-XXX",
+      "comments": "any additional analysis",
+      "vendor_response": "vendor comment if present"
+    }
+  ]
+}
+
+Context: Sheet "{sheet_name}", Rows {start_row}-{end_row}
+Previous chunk summary: {previous_summary}
+
+Excel Content:
+{chunk_content}
+
+Extract ALL requirements from this content. Maintain exact descriptions. Assign appropriate types and priorities based on content analysis.
+```
+
+### 4. Data Aggregation & RTM Generation
+
+#### After Processing All Chunks:
+1. **Consolidate Results**: Merge all extracted requirements into single dataset
+2. **Validate Completeness**: Ensure no requirements were missed or duplicated
+3. **Generate Unique IDs**: Create sequential REQ-001, REQ-002... and TC-001, TC-002...
+4. **Create RTM Excel**: Generate output file with these columns:
+   - Requirement ID
+   - Requirement Description  
+   - Source (sheet!cell reference)
+   - Requirement Type
+   - Priority
+   - Status (default: "Not Tested")
+   - Related Deliverables
+   - Test Case ID
+   - Comments
+
+### 5. Error Handling & Resilience
+
+#### API Error Management:
+- Handle 429 (rate limit) errors with exponential backoff
+- Retry failed requests up to 3 times
+- Log all API calls and responses for debugging
+- Save intermediate results to prevent data loss
+
+#### Data Validation:
+- Verify all chunks were processed
+- Check for missing requirement IDs or descriptions
+- Validate JSON parsing from AI responses
+- Ensure output RTM has all required columns
+
+### 6. Technology Stack
+
+#### Required Libraries:
+```python
+# Excel Processing
+import pandas as pd
+import openpyxl
+from openpyxl.utils import get_column_letter
+
+# AI & LLM
+import groq
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import tiktoken  # for token counting
+
+# Utilities
+import json
+import time
+import logging
+import uuid
+from datetime import datetime
+
+# Optional UI
+import streamlit as st  # if building web interface
+```
+
+#### Core Classes to Implement:
+1. **ExcelProcessor**: Loads and chunks Excel data
+2. **GroqAPIClient**: Manages API calls with rate limiting
+3. **RequirementExtractor**: Processes AI responses  
+4. **RTMGenerator**: Creates final Excel output
+5. **ChunkManager**: Handles chunking logic and metadata
+
+### 7. Implementation Steps
+
+#### Phase 1: Excel Processing & Chunking
+1. Load Excel file with openpyxl to handle merged cells
+2. Extract text content from each sheet with cell references
+3. Implement chunking algorithm respecting token limits
+4. Create chunk metadata tracking system
+
+#### Phase 2: AI Integration
+1. Set up Groq API client with rate limiting
+2. Implement retry logic and error handling
+3. Create structured prompts for requirement extraction
+4. Test with sample chunks and validate output format
+
+#### Phase 3: Aggregation & Output
+1. Build result consolidation system
+2. Create RTM Excel generation with proper formatting
+3. Add validation and quality checks
+4. Implement logging and progress tracking
+
+#### Phase 4: Testing & Optimization
+1. Test with full document end-to-end
+2. Optimize chunk sizes based on actual token usage
+3. Validate output quality against manual review
+4. Add performance monitoring
+
+### 8. Expected Output Quality
+The generated RTM should match the quality shown in the provided sample output:
+- 500+ requirements extracted accurately
+- Proper categorization (Functional, Technical, Business, etc.)
+- Intelligent priority assignment (High/Medium/Low)
+- Complete traceability to source cells
+- Sequential test case ID mapping
+- Professional Excel formatting
+
+### 9. Deployment Considerations
+- Can run as standalone Python script
+- Optional: Web interface using Streamlit for easy file upload
+- Consider packaging as Docker container for easy distribution
+- Include configuration file for API keys and parameters
+
+### 10. Success Metrics
+- Zero data loss during chunking and aggregation
+- 100% of requirements extracted from source Excel
+- Proper handling of merged cells and complex formatting  
+- Successful rate limit compliance (no 429 errors)
+- Output RTM completeness matching manual review
+- Processing time under 5 minutes for typical RFP documents
+
+## File Structure
+```
+rfp_to_rtm_agent/
+├── src/
+│   ├── excel_processor.py
+│   ├── groq_client.py  
+│   ├── requirement_extractor.py
+│   ├── rtm_generator.py
+│   └── chunk_manager.py
+├── config/
+│   └── settings.yaml
+├── tests/
+│   └── test_chunking.py
+├── requirements.txt
+└── main.py
+```
+
+This specification provides complete guidance for building a robust, AI-powered Excel RFP processing agent that respects API limits and produces high-quality RTM output.

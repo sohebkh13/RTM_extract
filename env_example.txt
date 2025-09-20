@@ -1,0 +1,23 @@
+# AI Configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+
+# Application Settings
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=True
+LOG_LEVEL=INFO
+
+# File Storage
+MAX_FILE_SIZE=10485760  # 10MB in bytes
+UPLOAD_DIR=uploads
+OUTPUT_DIR=outputs
+
+# Processing Settings
+GEMINI_MODEL=gemini-1.5-flash
+GROQ_MODEL=llama3-8b-8192
+AI_MAX_TOKENS=8000
+AI_TEMPERATURE=0.1
+FOCUS_SHEET_NAME=2- tool Requirements
+REQUIREMENT_ID_PREFIX=REQ
+TEST_CASE_ID_PREFIX=TC
